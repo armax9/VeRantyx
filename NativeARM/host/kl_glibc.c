@@ -238,7 +238,15 @@ static void *klg_fopen(const char *p, const char *mode) {
     static char version[] = "Linux version 6.1.0-steamrt (steam@frame) (gcc 13) #1 SMP PREEMPT_DYNAMIC\n";
     if (g_cmdline && p && !strcmp(p, "/proc/self/cmdline")) return fmemopen(g_cmdline, g_cmdline_len, "rb");
     if (p && !strcmp(p, "/proc/version")) return fmemopen(version, sizeof version - 1, "rb");
-    return ((void *(*)(const char *, const char *))B("fopen"))(p, mode);
+    void *file = ((void *(*)(const char *, const char *))B("fopen"))(p, mode);
+    int saved_errno = errno;
+    if (p && strstr(p, "cfg/") && (strstr(p, "video") || strstr(p, "machine"))) {
+        static unsigned count;
+        if (__atomic_fetch_add(&count, 1, __ATOMIC_RELAXED) < 80)
+            fprintf(stderr, "[settings-io] fopen %s mode %s: %s errno %d\n", p, mode, file ? "OK" : "FAILED", file ? 0 : saved_errno);
+    }
+    errno = saved_errno;
+    return file;
 }
 
 // ---------- stat family (glibc's versioned entry points) ----------
@@ -1385,7 +1393,7 @@ static struct { const char *name; void *fn; } g_table[] = {
     E("inotify_init", klg_inotify_init), E("inotify_init1", klg_inotify_init1), E("inotify_add_watch", klg_inotify_add_watch),
     E("inotify_rm_watch", klg_inotify_rm_watch),
     E("readlink", klg_readlink), E("readlinkat", klg_readlinkat), E("stat", klg_stat), E("lstat", klg_lstat),
-    E("fstatat", klg_fstatat), E("fopen", klg_fopen),
+    E("fstatat", klg_fstatat), E("fopen", klg_fopen), E("fopen64", klg_fopen),
     E("tmpnam", tmpnam), E("getloadavg", getloadavg), E("putenv", putenv), E("asctime", asctime), E("asctime_r", asctime_r),
     E("getdtablesize", getdtablesize), E("futimes", futimes), E("ctermid", ctermid), E("faccessat", klg_faccessat),
     E("posix_fadvise", klg_posix_fadvise), E("posix_fadvise64", klg_posix_fadvise), E("mount", klg_mount), E("umount", klg_mount),
