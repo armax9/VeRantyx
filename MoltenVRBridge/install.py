@@ -49,6 +49,8 @@ def main():
     stage = Path(tempfile.mkdtemp(prefix='.alyx-native-install-', dir=game))
     try:
         shutil.copytree(package/'runtime', stage, dirs_exist_ok=True)
+        for name in ('alyx_host', 'bridge'):
+            (stage/name).chmod(0o755)
         guest = stage/'guest-lib'; guest.mkdir()
         for directory in bins + [deb_lib]:
             for f in sorted(directory.glob('*.so*')):

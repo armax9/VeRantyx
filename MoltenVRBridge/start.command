@@ -55,7 +55,8 @@ export VERANTYX_DISPLAY_HZ=72
 export VERANTYX_SYNC_TRACKING=1
 export VERANTYX_LOCAL_ROTATION_WARP="${VERANTYX_LOCAL_ROTATION_WARP:-1}"
 export VB_FPS=72
-export MOLTENVR_FPS_FILE="$base/runtime-fps"
+export MOLTENVR_FPS_FILE="$logs/runtime-fps"
+printf '%s\n' "$VERANTYX_DISPLAY_HZ" > "$MOLTENVR_FPS_FILE"
 unset VERANTYX_SUBMIT_CURRENT_POSE
 export VERANTYX_SHARED_FRUSTUM=1
 # Leave IPD at runtime defaults; no maintainer headset calibration is shipped.
