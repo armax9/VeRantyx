@@ -35,3 +35,7 @@ own Steam account:
   `NativeARM/host/kl_guestfix.c`) and never writes to the game's files.
 
 Apple's Game Porting Toolkit (D3DMetal) is not used, distributed or required.
+
+## MoltenVR fork additions
+
+MoltenVRBridge uses Khronos OpenXR/Vulkan headers (Apache-2.0 OR MIT / Apache-2.0). The release includes MoltenVK (Apache-2.0), patched Klepton linked into the host (MIT), and ALVR hand-skeleton data (MIT). Full notices accompany the archive. MoltenVR itself, Valve game files and Debian libraries are not bundled. The installer fetches Debian dependencies from their official mirror.
