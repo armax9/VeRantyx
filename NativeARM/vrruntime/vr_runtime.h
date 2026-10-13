@@ -67,6 +67,8 @@ static_assert(sizeof(DoubleBufferHeader) == 64, "DoubleBufferHeader layout");
 constexpr size_t kMaxPixelBytes = 4096ull * 4096ull * 8ull;
 constexpr size_t kFrameBlockSize = sizeof(SharedFrame) + kMaxPixelBytes;
 constexpr size_t kHandsOffset = sizeof(DoubleBufferHeader) + kFrameBlockSize * 2;
+struct FrameProjection { uint32_t sequence; float tangents[8]; };
+constexpr size_t kProjectionOffset = kHandsOffset + sizeof(SharedHands);
 constexpr size_t kSharedMapSize = kHandsOffset + sizeof(SharedHands) + 1024;
 
 // Button bits in SharedHands::{left,right}Buttons (left ones shifted by 8).
@@ -106,7 +108,7 @@ bool read_hands(SharedHands *out);           // seqlock-consistent snapshot; fal
 // `format` is the DXGI code the encoder understands (28 RGBA8 / 87 BGRA8).
 uint8_t *frame_begin(uint32_t combinedWidth, uint32_t height, uint32_t *writeIndex);
 void frame_publish(uint32_t writeIndex, uint32_t combinedWidth, uint32_t height, uint32_t format,
-                   const float renderHeadTransform[16], double visionTimestamp);
+                   const float renderHeadTransform[16], double visionTimestamp, const float *imageTangents = nullptr);
 
 // Poses.
 struct PoseSet {
