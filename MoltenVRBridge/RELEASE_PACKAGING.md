@@ -1,11 +1,11 @@
-# Release allowlist
+# Runtime packaging
 
-The source branch is based on upstream native commit `12e7826e489a3f7c8526e623e4ca3c2c6d6bb62a`.
+Version 0.2.0 integrates VeRantyx main through `421b682218dc8ff27ea3c73e9deb6567a00aec78`, retaining the fork's MoltenVR projection and input integration.
 
-The ARM64 runtime archive contains only `alyx_host`, `bridge`, two warp SPIR-V files, two MoltenVK builds, license notices, the installer, launcher, optional Steam integration and Debian dependency downloader. The existing tested runtime binaries are used for 0.1.0; a complete Klepton source delta against the pinned commit is provided in `klepton/`. New builds may use a different MoltenVK version and need gameplay validation.
+The archive contains the ARM64 host, native OpenXR bridge, two warp SPIR-V shaders, two MoltenVK builds, license notices, installer helpers, launcher and optional Steam integration. The installed host was validated by the maintainer before release; the portable host build changes the fallback MoltenVK path, strips debug symbols and uses ad-hoc signing.
 
-Never copy the installed `guest-lib` directory: it mixes Valve game libraries with Debian dependencies. Never include native-game, Steam files, cfg, vrpreferences, logs, pipeline cache, shared frame mappings, backups or local user paths. The installer builds library links and a merged game root locally from the user's own installation and ARM64 depot. Debian dependencies are fetched from their official distribution instead of redistributed.
+The bridge and bundled MoltenVK libraries retain the working installation's versions. Building with another MoltenVK version requires separate gameplay validation.
 
-VeRantyx and Klepton are MIT; the OpenVR SDK is BSD-3-Clause; OpenXR SDK is Apache-2.0 OR MIT; MoltenVK is Apache-2.0; the ALVR skeleton data is MIT. Preserve their notices. Valve game files and MoltenVR runtime binaries are not distributed. Licensed OpenVR headers inherited from upstream remain in the source fork, not proprietary Valve binaries.
+Do not include `guest-lib`, game assets, native-game, settings, saves, logs, shader caches, shared frame mappings, backups or credentials. UI resources are patched locally by `prepare_native_ui.py` using the owner's VPK; no compiled game UI resources are redistributed. Debian libraries are downloaded from their official mirror by the installer.
 
-0.1.0 is unsigned by a Developer ID; binaries use local ad-hoc signing. Installation and argument forwarding are tested with fixture directories. Full fresh-machine installation and macOS Steam Play have not been verified.
+The complete pinned Klepton baseline patch is in `klepton/`. The build script applies it and then the current NativeARM Klepton refinements. Preserve all third-party notices.

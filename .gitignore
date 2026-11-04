@@ -24,3 +24,7 @@ VRDriver/.build-*
 build/steamvr-d3d11-proxy/.build-*
 *.xcuserdatad/
 /NativeARM/build/
+
+# Python test/build artifacts
+__pycache__/
+*.py[cod]

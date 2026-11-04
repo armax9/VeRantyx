@@ -17,7 +17,7 @@ namespace vrrt {
 // ---- shared memory with MacEncoder/HardwareEncoder.swift (byte-identical to
 // VRDriver/src/driver_verantyx.cpp) ----
 #pragma pack(push, 1)
-struct SharedFrame {
+struct alignas(8) SharedFrame {
     uint32_t sequenceNumber;
     uint32_t width;          // both eyes side by side
     uint32_t height;
@@ -25,7 +25,7 @@ struct SharedFrame {
     float renderHeadTransform[16];
     double visionTimestamp;
 };
-struct SharedHands {
+struct alignas(8) SharedHands {
     float headTransform[16];
     float leftTransform[16];
     float rightTransform[16];
@@ -62,7 +62,11 @@ struct DoubleBufferHeader {
     uint32_t padding[10];
 };
 static_assert(sizeof(SharedFrame) == 88, "SharedFrame layout");
+static_assert(alignof(SharedFrame) == 8, "frame sequence is naturally aligned in both shared slots");
 static_assert(sizeof(SharedHands) == 312, "SharedHands layout");
+static_assert(alignof(SharedHands) == 8, "shared pose matrices have aligned float elements");
+static_assert(offsetof(SharedHands, visionTimestamp) == 244 && offsetof(SharedHands, leftTangents) == 252 &&
+              offsetof(SharedHands, leftAngularVelocity) == 287 && offsetof(SharedHands, velocityValid) == 311, "MacEncoder pose offsets");
 static_assert(sizeof(DoubleBufferHeader) == 64, "DoubleBufferHeader layout");
 constexpr size_t kMaxPixelBytes = 4096ull * 4096ull * 8ull;
 constexpr size_t kFrameBlockSize = sizeof(SharedFrame) + kMaxPixelBytes;
@@ -70,6 +74,15 @@ constexpr size_t kHandsOffset = sizeof(DoubleBufferHeader) + kFrameBlockSize * 2
 struct FrameProjection { uint32_t sequence; float tangents[8]; };
 constexpr size_t kProjectionOffset = kHandsOffset + sizeof(SharedHands);
 constexpr size_t kSharedMapSize = kHandsOffset + sizeof(SharedHands) + 1024;
+// MoltenVR retains the existing projection ABI at +312..383.
+// Optional upstream metadata follows it instead of overlapping those matrices.
+struct SharedExtras { uint32_t ipdMagic; float ipdMeters; };
+struct SharedHaptic { uint32_t sequence; float durationSeconds, frequency, amplitude; };
+constexpr size_t kExtrasOffset = kHandsOffset + 384;
+constexpr size_t kHapticsOffset = kHandsOffset + 400;
+static_assert(kProjectionOffset + 2*sizeof(FrameProjection) <= kExtrasOffset, "projection metadata must not overlap optional IPD or haptics");
+constexpr uint32_t kIpdMagic = 0x44504956; // "VIPD"
+static_assert(sizeof(SharedHaptic) == 16 && kHapticsOffset + 2 * sizeof(SharedHaptic) <= kSharedMapSize, "ALVR tail layout");
 
 // Button bits in SharedHands::{left,right}Buttons (left ones shifted by 8).
 enum : uint32_t { kBtnPrimary = 1, kBtnSecondary = 2, kBtnStickClick = 4, kBtnStickTouch = 8, kBtnMenu = 16 };
@@ -104,6 +117,8 @@ void init(const char *gameDir);              // reads env, opens shared memory, 
 bool shm_ready();
 uint8_t *shm_base();
 bool read_hands(SharedHands *out);           // seqlock-consistent snapshot; false if none yet
+float headset_ipd();                        // explicit override, then ALVR's live IPD, then default
+bool haptic(int hand, float start, float duration, float frequency, float amplitude);
 // Publish a finished eye pair (both eyes side by side, 4 bytes per pixel).
 // `format` is the DXGI code the encoder understands (28 RGBA8 / 87 BGRA8).
 uint8_t *frame_begin(uint32_t combinedWidth, uint32_t height, uint32_t *writeIndex);
@@ -123,8 +138,13 @@ struct PoseSet {
     bool inputsFresh;
 };
 void sample_poses(PoseSet *out, double predictSeconds);
-const PoseSet &last_poses();                 // as handed out by the last WaitGetPoses
+// Recover the headset sample ID for an application's submitted render pose.
+// Zero means no matching sample remains in the bounded recent history.
+double timestamp_for_head_pose(const vr::HmdMatrix34_t &pose);
+PoseSet last_poses();                        // a thread-safe copy of the last WaitGetPoses
 void set_last_poses(const PoseSet &p);
+void report_inputs(const PoseSet &p);        // sampled even while action updates fail or stop
+bool legacy_input_enabled();                // raw controller API only before action input is selected
 vr::HmdMatrix34_t matrix34_from_column_major(const float *t);
 void identity34(vr::HmdMatrix34_t *m);
 
@@ -138,6 +158,12 @@ double seconds_since_vsync();
 // Events (IVRSystem::PollNextEvent).
 void push_event(const vr::VREvent_t &e);
 bool pop_event(vr::VREvent_t *e);
+void acknowledge_quit();
+bool publish_file(const char *variable, const std::string &text);
+void expect_stage_ready(uint64_t token);
+void loading_message(const std::string &message);
+void loading_reset();
+void loading_log(const char *text);
 
 void log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 

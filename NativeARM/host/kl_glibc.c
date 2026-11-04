@@ -19,6 +19,7 @@
 // to Klepton's tables, and a name nobody knows still reaches the loader's
 // unresolved-import report, which is the work list.
 #include <stdio.h>
+#include "kl_steambridge.h"
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -228,26 +229,27 @@ static int fake_link_stat(void *buf) {
     *(int32_t *)((char *)buf + 56) = 4096;
     return 0;
 }
-static int klg_stat(const char *p, void *buf) { if (is_self_exe(p)) return ((int (*)(const char *, void *))B("stat"))(g_exe_path, buf); return ((int (*)(const char *, void *))B("stat"))(p, buf); }
-static int klg_lstat(const char *p, void *buf) { if (is_self_exe(p)) return fake_link_stat(buf); return ((int (*)(const char *, void *))B("lstat"))(p, buf); }
+static int klg_stat(const char *p, void *buf) { if (is_self_exe(p)) return ((int (*)(const char *, void *))B("stat"))(g_exe_path, buf); return ((int (*)(const char *, void *))B("stat"))(kl_steambridge_path(p), buf); }
+static int klg_lstat(const char *p, void *buf) { if (is_self_exe(p)) return fake_link_stat(buf); return ((int (*)(const char *, void *))B("lstat"))(kl_steambridge_path(p), buf); }
 static int klg_fstatat(int dfd, const char *p, void *buf, int flags) {
     if (is_self_exe(p)) return (flags & 0x100) ? fake_link_stat(buf) : klg_stat(p, buf);
-    return ((int (*)(int, const char *, void *, int))B("fstatat"))(dfd, p, buf, flags);
+    return ((int (*)(int, const char *, void *, int))B("fstatat"))(dfd, kl_steambridge_path(p), buf, flags);
 }
 static void *klg_fopen(const char *p, const char *mode) {
     static char version[] = "Linux version 6.1.0-steamrt (steam@frame) (gcc 13) #1 SMP PREEMPT_DYNAMIC\n";
     if (g_cmdline && p && !strcmp(p, "/proc/self/cmdline")) return fmemopen(g_cmdline, g_cmdline_len, "rb");
     if (p && !strcmp(p, "/proc/version")) return fmemopen(version, sizeof version - 1, "rb");
-    void *file = ((void *(*)(const char *, const char *))B("fopen"))(p, mode);
-    int saved_errno = errno;
-    if (p && strstr(p, "cfg/") && (strstr(p, "video") || strstr(p, "machine"))) {
-        static unsigned count;
-        if (__atomic_fetch_add(&count, 1, __ATOMIC_RELAXED) < 80)
-            fprintf(stderr, "[settings-io] fopen %s mode %s: %s errno %d\n", p, mode, file ? "OK" : "FAILED", file ? 0 : saved_errno);
-    }
-    errno = saved_errno;
-    return file;
+    return ((void *(*)(const char *, const char *))B("fopen"))(kl_steambridge_path(p), mode);
 }
+// Linux AArch64 passes the optional mode in x2/x3. Darwin's va_arg would read
+// the stack; use fixed signatures both here and when entering Klepton's thunk.
+static int klg_open(const char *p, int flags, int mode) {
+    return ((int (*)(const char *, int, int))B("open"))(kl_steambridge_path(p), flags, mode);
+}
+static int klg_openat(int dfd, const char *p, int flags, int mode) {
+    return ((int (*)(int, const char *, int, int))B("openat"))(dfd, kl_steambridge_path(p), flags, mode);
+}
+static int klg_access(const char *p, int mode) { return ((int (*)(const char *, int))B("access"))(kl_steambridge_path(p), mode); }
 
 // ---------- stat family (glibc's versioned entry points) ----------
 static int klg___xstat(int ver, const char *p, void *buf) { return klg_stat(p, buf); }
@@ -255,8 +257,8 @@ static int klg___lxstat(int ver, const char *p, void *buf) { return klg_lstat(p,
 static int klg___fxstat(int ver, int fd, void *buf) { return ((int (*)(int, void *))B("fstat"))(fd, buf); }
 static int klg___fxstatat(int ver, int dfd, const char *p, void *buf, int flags) { return klg_fstatat(dfd, p, buf, flags); }
 static int klg___xmknod(int ver, const char *p, mode_t mode, dev_t *dev) { return mknod(p, mode, dev ? *dev : 0); }
-static int klg___open_2(const char *p, int flags) { return ((int (*)(const char *, int, ...))B("open"))(p, flags); }
-static int klg___openat_2(int dfd, const char *p, int flags) { return ((int (*)(int, const char *, int, ...))B("openat"))(dfd, p, flags); }
+static int klg___open_2(const char *p, int flags) { return klg_open(p, flags, 0); }
+static int klg___openat_2(int dfd, const char *p, int flags) { return klg_openat(dfd, p, flags, 0); }
 
 // ---------- stdio internals ----------
 static ssize_t klg___getdelim(char **lp, size_t *n, int delim, void *f) { return getdelim(lp, n, delim, kl_host_file(f)); }
@@ -859,6 +861,20 @@ static long sysctl_long(const char *name, long dflt) {
     int64_t v = 0; size_t n = sizeof v;
     return sysctlbyname(name, &v, &n, NULL, 0) == 0 ? (long)v : dflt;
 }
+static int klg_sysinfo(void *out) {
+    int result = ((int (*)(void *))B("sysinfo"))(out);
+    static int reported;
+    if (result == 0 && !__atomic_exchange_n(&reported, 1, __ATOMIC_RELAXED)) {
+        // Linux LP64 sysinfo: totalram/freeram at 32/40, mem_unit at 104.
+        uint64_t total, free; uint32_t unit;
+        memcpy(&total, (char *)out + 32, sizeof total);
+        memcpy(&free, (char *)out + 40, sizeof free);
+        memcpy(&unit, (char *)out + 104, sizeof unit);
+        fprintf(stderr, "  [glibc] guest sysinfo: total=%llu MiB free=%llu MiB\n",
+                (unsigned long long)((total * unit) >> 20), (unsigned long long)((free * unit) >> 20));
+    }
+    return result;
+}
 static long klg_sysconf(int name) {
     switch (name) {
     case 0: return sysconf(_SC_ARG_MAX);
@@ -889,8 +905,11 @@ static long klg_sysconf(int name) {
     case 76: return sysconf(_SC_THREAD_THREADS_MAX);
     case 83: return sysconf(_SC_NPROCESSORS_CONF);
     case 84: return sysconf(_SC_NPROCESSORS_ONLN);
-    case 85: return sysconf(_SC_PHYS_PAGES);
-    case 86: return sysconf(_SC_PHYS_PAGES) / 2;         // _SC_AVPHYS_PAGES
+    case 85: return (long)(kl_mem_budget_bytes() / getpagesize()); // _SC_PHYS_PAGES
+    case 86: {                                           // _SC_AVPHYS_PAGES
+        uint64_t available = kl_mem_available_bytes(), total = kl_mem_budget_bytes();
+        return (long)((available < total ? available : total) / getpagesize());
+    }
     case 149: return 200809L;                            // _SC_MONOTONIC_CLOCK
     case 180: return 255;                                // _SC_HOST_NAME_MAX
     case 185: return sysctl_long("hw.l1icachesize", 131072);   // _SC_LEVEL1_ICACHE_SIZE
@@ -1031,7 +1050,7 @@ static int klg_random_r(struct lx_random_data *b, int32_t *out) {
     *out = (int32_t)(x & 0x7fffffff); return 0;
 }
 static int klg_mkostemp(char *tmpl, int flags) { return mkostemp(tmpl, (flags & 0x80000) ? O_CLOEXEC : 0); }
-static int klg_creat(const char *p, mode_t m) { return ((int (*)(const char *, int, ...))B("open"))(p, 01 | 0100 | 01000, m); }   // O_WRONLY|O_CREAT|O_TRUNC (Linux)
+static int klg_creat(const char *p, mode_t m) { return klg_open(p, 01 | 0100 | 01000, m); }   // O_WRONLY|O_CREAT|O_TRUNC (Linux)
 static char *klg___xpg_basename(char *p) { return basename(p); }
 static int klg_pthread_attr_setinheritsched(void *attr, int inherit) { return 0; }
 static int klg_enotsup(void) { errno = ENOTSUP; return -1; }
@@ -1353,8 +1372,9 @@ static struct { const char *name; void *fn; } g_table[] = {
     E("pthread_rwlock_clockrdlock", klg_pthread_rwlock_clockrdlock), E("pthread_rwlock_clockwrlock", klg_pthread_rwlock_clockwrlock),
     E("sem_clockwait", klg_sem_clockwait), E("pthread_tryjoin_np", klg_pthread_tryjoin_np), E("pthread_timedjoin_np", klg_pthread_timedjoin_np),
     E("pthread_setname_np", klg_pthread_setname_np), E("pthread_getname_np", klg_pthread_getname_np), E("pthread_yield", klg_pthread_yield),
-    E("sysconf", klg_sysconf), E("__sysconf", klg_sysconf), E("_exit", klg__exit), E("_Exit", klg__exit), E("exit", klg_exit),
+    E("sysinfo", klg_sysinfo), E("sysconf", klg_sysconf), E("__sysconf", klg_sysconf), E("_exit", klg__exit), E("_Exit", klg__exit), E("exit", klg_exit),
     E("dlsym", klg_dlsym), E("dlopen", klg_dlopen), E("pthread_cancel", pthread_cancel),
+    E("open", klg_open), E("open64", klg_open), E("openat", klg_openat), E("openat64", klg_openat), E("access", klg_access),
     E("semctl", klg_semctl), E("semget", klg_semget), E("semop", klg_semop), E("semtimedop", klg_semtimedop),
     // complex math: float complex travels in s0/s1 on both ABIs
     E("cabsf", cabsf), E("cexpf", cexpf), E("cargf", cargf), E("csqrtf", csqrtf), E("clogf", clogf), E("cpowf", cpowf),
@@ -1471,6 +1491,18 @@ static void *klg_lookup(const char *name) {
 }
 
 void kl_glibc_install(const char *argv0) {
+    // Klepton defaults to a Quest's 6 GiB budget. This Linux guest runs on the
+    // Mac: sysinfo and /proc/meminfo must see its RAM before any query latches
+    // that budget. Keep an explicit smaller budget available for diagnostics.
+    if (!getenv("KL_MEM_TOTAL_MB")) {
+        long bytes = sysctl_long("hw.memsize", 0);
+        if (bytes > 0) {
+            char mib[32]; snprintf(mib, sizeof mib, "%ld", bytes >> 20);
+            setenv("KL_MEM_TOTAL_MB", mib, 0);
+        }
+    }
+    fprintf(stderr, "  [glibc] Linux memory budget: %llu MiB (Mac RAM, unless KL_MEM_TOTAL_MB overrides it)\n",
+            (unsigned long long)(kl_mem_budget_bytes() >> 20));
     if (argv0 && *argv0) {
         g_argv0 = argv0;
         const char *b = strrchr(argv0, '/');

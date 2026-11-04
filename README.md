@@ -1,159 +1,82 @@
-# VeRantyx — native Half-Life: Alyx for MoltenVR
+# Native Half-Life: Alyx for MoltenVR
 
-Run Valve’s Linux ARM64 build of Half-Life: Alyx on an Apple Silicon Mac and stream it to a Quest headset through MoltenVR.
+Play Valve's Linux ARM64 version of Half-Life: Alyx on an Apple Silicon Mac with MoltenVR and a Quest headset. The game runs on the Mac; MoltenVR streams it to the headset.
 
-This fork adapts [VeRantyx’s native branch](https://github.com/Ag3497120/VeRantyx/tree/native) for MoltenVR, with controller input, corrected stereo presentation, persistent graphics settings and fixes for object throwing. It is based on upstream commit `12e7826e489a3f7c8526e623e4ca3c2c6d6bb62a`.
+This is a MoltenVR adaptation of [VeRantyx](https://github.com/Ag3497120/VeRantyx), built on Klepton and MoltenVK. Version 0.2.0 includes native runtime updates from upstream `main` through November 4, 2026 (`421b682`), together with this fork's MoltenVR integration.
 
-## Install the runtime release
+## Download and install
 
-Download the ARM64 runtime archive from [Releases](https://github.com/armax9/VeRantyx/releases), extract it, and run:
+Download and extract the latest **macOS ARM64 runtime ZIP** from [Releases](https://github.com/armax9/VeRantyx/releases). Then run:
 
 ```bash
 python3 install.py "/path/to/Half-Life Alyx" "/path/to/depot_546564" --notproton
 ```
 
-Use your own installed Alyx content and SteamCMD ARM64 depot. The installer downloads Debian dependencies from the official mirror; it never downloads or includes game files. It creates a separate merged native game root and library links, backs up a previous managed runtime and launcher, and preserves native settings/cache on updates. It refuses to replace an unmanaged `verantyx` folder; rename that folder first if upgrading from a manual installation. Omit `--notproton` for direct launches.
+Use your installed Alyx content and your Linux ARM64 depot. To download that depot with your own Steam account, use `NativeARM/scripts/fetch_alyx_arm64.sh <your-steam-login>` from this repository. The installer fetches Linux dependencies, sets up the native runtime, and backs up an existing managed installation. Updates preserve settings and shader caches. Omit `--notproton` if you prefer the launcher directly.
 
-To obtain the depot, install SteamCMD and use `NativeARM/scripts/fetch_alyx_arm64.sh <your-steam-login>` from the source repository. Steam handles authentication. Build instructions are in `MoltenVRBridge/build-release.sh`; the complete working Klepton patch is in `MoltenVRBridge/klepton/`.
+You need:
 
-**Status:** experimental, based on a working M3 Max / Quest 3 installation. Packaging and installer checks pass; a fresh-machine install and complete Steam Play session still require validation.
+- An Apple Silicon Mac running macOS 14.2 or newer.
+- [MoltenVR](https://github.com/MoltenVR/MoltenVR-Preview) configured with your headset.
+- Your own copy of Half-Life: Alyx, its installed content and Valve's Linux ARM64 depot.
+- **Native Steam for macOS, running and signed in.** Steam inside CrossOver alone is insufficient for this runtime.
 
-## How it works
+A Windows Alyx installation can supply the shared content. This native launch route does not use CrossOver, OpenComposite or SteamVR.
+
+## Play from Steam
+
+[NotProton](https://github.com/NotProtonNot/NotProton) is recommended for convenient launching: it exposes compatibility-tool selection in macOS Steam, allowing the existing Alyx library entry and launch-options field to start the native game.
+
+1. Install NotProton and use the installer command above with `--notproton`.
+2. Fully restart Steam.
+3. Open **Alyx → Properties → Compatibility** and select **Alyx Native - MoltenVR**.
+4. Remove Windows-specific launch wrappers and variables such as `%command%`, `CX_GRAPHICS_BACKEND` and the Windows `XR_RUNTIME_JSON` path.
+5. Start MoltenVR, wear the headset and press **Play** in Steam.
+
+Example launch options:
 
 ```text
-Valve’s Linux ARM64 Alyx
-    → VeRantyx / Klepton on macOS
-    → MoltenVK rendering and our native OpenXR bridge
-    → MoltenVR
-    → Quest headset
+-novid +vr_fidelity_level_auto 0 +vr_fidelity_level 3
 ```
 
-The game’s CPU code runs as ARM64 through the upstream compatibility layer. Vulkan rendering uses MoltenVK. MoltenVR handles streaming to the headset. This launch path does not use the Windows Alyx executable, Wine, D3DMetal, OpenComposite or SteamVR.
+Without a fidelity override, automatic fidelity is used. Your Low / Medium / High graphics preset is saved by the game.
 
-An existing Windows installation of Alyx, including one installed through Steam in CrossOver, can supply the shared game content. The required Linux ARM64 binaries are downloaded separately through SteamCMD using the owner’s Steam account.
-
-## What upstream already provides
-
-VeRantyx and Klepton provide the foundation: loading Valve’s Linux ARM64 binaries on macOS, Linux API compatibility, graphics integration, a native VR interface implementation, macOS Steam communication and tools for downloading and arranging game files. This fork builds on that work; it does not claim to have created the native Alyx port.
-
-The original native setup documents a Vision Pro streaming route. This fork adds a MoltenVR route for Quest use.
-
-## Changes in this fork
-
-### MoltenVR output and headset tracking
-
-- A native OpenXR bridge connects directly to the installed MoltenVR runtime.
-- Headset tracking and runtime eye projection data reach the game through the shared frame/pose bridge.
-- Output resolution is read from MoltenVR’s runtime recommendation at startup, instead of requiring a resolution specific to one user’s headset configuration.
-- Startup waits for live tracking before launching the game.
-- Frame presentation carries the pose used to render the image, rather than attaching a newer pose to an older image.
-- Local rotation correction uses the source image’s actual field of view. This addresses image stretching and skew during head movement and changes to graphics settings or fidelity.
-- Texture bounds are validated and clipped consistently before splitting the shared render frustum into the two eyes.
-
-### Quest controller input
-
-- Touch-controller grip poses, triggers, grips, thumbsticks, stick clicks/touch, A/B/X/Y and the menu button are connected through OpenXR actions.
-- The native input implementation supplies Alyx’s action and pose queries.
-- Gravity-glove interaction works in the tested setup.
-- Controller-derived finger animation is supported. Full optical finger tracking is not part of this release.
-
-### Object throwing and release timing
-
-Earlier test builds could drop held objects at the player’s feet, or require an unnaturally late trigger release to transfer momentum. The working version corrects the input/pose information supplied to Alyx:
-
-- Preserve the hand’s input origin when a digital action changes to released.
-- Refresh input when the game updates its action state.
-- Timestamp action changes using the tracking packet’s time when valid.
-- Keep a short history of measured controller poses and velocities for historical pose queries.
-- Honor the relative time requested by the game, while preserving compositor poses for next-frame queries.
-
-These fixes restored throwing and normal release timing in the maintainer’s tests. They do not add an artificial throw multiplier or peak-speed boost.
-
-### Graphics settings and everyday use
-
-- Preserve the native build’s Low / Medium / High graphics preset through the engine’s own archived settings path.
-- Add persistent storage for VR settings instead of accepting writes and discarding them.
-- Support `fopen64` through the host’s file-opening implementation.
-- Supply the Mac’s actual memory size to the compatibility layer.
-- Preserve a pipeline cache between sessions. This is not a complete precompiled shader cache: new content can still need compilation or resource loading.
-- Forward launch parameters as separate arguments without evaluating them as shell commands.
-- Default to automatic fidelity; allow an explicit fidelity level through launch options.
-- Normal launches suppress diagnostic output and remove temporary session files. Persistent settings and pipeline caches are retained.
-
-## Requirements
-
-- An Apple Silicon Mac.
-- [MoltenVR](https://github.com/MoltenVR/MoltenVR-Preview) installed and configured with a compatible headset.
-- A licensed copy of Half-Life: Alyx and its installed game content.
-- **Native Steam for macOS, running and signed in to the account that owns Alyx.** Steam inside CrossOver alone does not satisfy the current native Steam bridge.
-- Valve’s Linux ARM64 Alyx depot, downloaded with the user’s own account through SteamCMD.
-- Build dependencies described in upstream [NATIVE_SETUP.md](https://github.com/Ag3497120/VeRantyx/blob/native/docs/NATIVE_SETUP.md) when building from source.
-
-CrossOver is useful if it already holds your game installation, but it is not the execution layer for native Alyx. NotProton is optional for direct script launches.
-
-Tested hardware: M3 Max and Quest 3. Performance depends on resolution, graphics preset, scene complexity and streaming configuration. No fixed FPS or latency is promised for other systems.
-
-## Launch an existing native installation
-
-Start native macOS Steam and the MoltenVR session, then run the launcher installed alongside Alyx:
+For a direct launch:
 
 ```bash
 bash "/path/to/Half-Life Alyx/start.command"
 ```
 
-An explicit fidelity level can be passed like this:
+Arguments can be appended to that command. Exit through the game menu, or use Ctrl+C for a terminal launch; the launcher requests a normal game shutdown and waits for saving to finish.
 
-```bash
-bash "/path/to/Half-Life Alyx/start.command" -novid +vr_fidelity_level_auto 0 +vr_fidelity_level 3
-```
+## What works
 
-Automatic fidelity is used when no fidelity override is supplied. If a level is provided without an auto flag, the launcher disables automatic fidelity for that launch. Graphics presets remain the game’s own saved settings; a preset is not forced on every startup.
+Tested by the maintainer on an M3 Max with Quest 3:
 
-Exit through the game menu where possible. For a terminal launch, Ctrl+C stops the session and allows time to save the pipeline cache.
+- Native ARM64 Alyx rendering and streaming through MoltenVR.
+- Head tracking, stereo projection and correction during head rotation.
+- Quest controller input, gravity gloves and object interaction.
+- Persistent graphics settings and native save-slot handling.
+- Steam launching with the optional NotProton compatibility tool.
 
-## Optional: launch from macOS Steam with NotProton
+Output resolution follows MoltenVR's recommendation at launch. Restart the game after changing it. Controller-driven finger animation is supported; optical finger tracking is not implemented.
 
-[NotProton](https://github.com/NotProtonNot/NotProton) exposes Steam Play functionality in the native macOS Steam client. It is recommended here for convenience: you can use Alyx’s library entry and its normal launch-options field.
+## New in 0.2.0
 
-Our integration is a separate compatibility tool named **Alyx Native - MoltenVR**. NotProton exposes the selection UI; this tool launches the native runtime directly. Selecting a CrossOver tool instead would launch the Windows version. NotProton does not improve the native game’s rendering speed by itself.
+- Persistent caching of rewritten shaders, with background compilation and improved cache synchronization.
+- Normal shutdown instead of terminating the game process, allowing settings and caches to finish saving.
+- Darker shadows and midtones using upstream's SDR display curve.
+- Upstream shadow-flicker fix and native thread-synchronization repairs.
+- Updated frame/pose handling while retaining MoltenVR's projection metadata and tracking cadence.
+- Compatibility with newer Alyx submenu resources. The installer generates the UI patch locally from your own game files.
+- Lowercase native save-slot names, without changing save contents.
 
-1. Install and configure NotProton according to its own instructions.
-2. Ensure Alyx appears as installed in the native Steam library. Installing this tool does not import a CrossOver library or download the game.
-3. Install our integration, after the native runtime and `start.command` are installed:
+New shader combinations can still require compilation on first use. Performance depends on your Mac, resolution, graphics settings and streaming connection.
 
-   ```bash
-   bash steam/install-notproton.sh "/path/to/Half-Life Alyx"
-   ```
+## Building and credits
 
-4. Fully quit and restart macOS Steam.
-5. Open **Alyx → Properties → Compatibility**. Enable the forced compatibility-tool selection and choose **Alyx Native - MoltenVR**.
-6. Remove Windows-specific launch settings such as `XR_RUNTIME_JSON='C:\openxr\...'`, `CX_GRAPHICS_BACKEND=d3dmetal`, `D3DM_ENABLE_METALFX=1` and custom `%command%` wrappers.
-7. Put game arguments directly into Steam’s launch-options field. For example:
+Build instructions: [MoltenVRBridge/build-release.sh](MoltenVRBridge/build-release.sh). Runtime packaging: [MoltenVRBridge/RELEASE_PACKAGING.md](MoltenVRBridge/RELEASE_PACKAGING.md).
 
-   ```text
-   -novid +vr_fidelity_level_auto 0 +vr_fidelity_level 3
-   ```
+Thanks to [VeRantyx](https://github.com/Ag3497120/VeRantyx), [medved91](https://github.com/medved91) for the native runtime refinements, [Klepton](https://github.com/shinyquagsire23/Klepton), [MoltenVK](https://github.com/KhronosGroup/MoltenVK), [MoltenVR](https://github.com/MoltenVR/MoltenVR-Preview), Valve, ALVR and NotProton.
 
-8. Start MoltenVR, wear the headset and press **Play**.
-
-The installer backs up an existing copy of this compatibility tool before updating it. It does not patch NotProton’s source code or modify other compatibility tools. Re-run it if the game folder moves.
-
-The integration has passed local argument-forwarding and installer checks. A fresh installation and a complete Steam Play session on another Mac still need validation before calling the release installation-tested.
-
-## Known limitations
-
-- Experimental, tested on a limited hardware setup.
-- Full shader precompilation and removal of all first-use stalls are not implemented.
-- Rotation correction helps head movement but does not remove rendering, readback, transfer or streaming latency; it is not positional reprojection.
-- Runtime resolution is selected at launch. Restart the session after changing MoltenVR’s output resolution.
-- The native build’s graphics menu differs from Windows Alyx and offers three presets.
-- One tested save showed a missing pistol icon in the weapon selector; another save displayed it correctly. No universal icon fix is claimed.
-- Crouch-related input/configuration changes require further confirmation.
-- The graphics-preset archive fix checks a particular native client binary before patching it. Future Valve updates may need a revised fix.
-- Launching native Alyx from Windows Steam inside CrossOver is outside this integration.
-
-## Distribution and credits
-
-No Valve game files, Steam credentials, MoltenVR binaries or CrossOver files should be included in the release. Users obtain proprietary components from their owners and download Valve’s ARM64 depot using their own Steam accounts.
-
-Preserve upstream MIT notices and include the applicable licenses for bundled third-party libraries. Credit [VeRantyx](https://github.com/Ag3497120/VeRantyx), Klepton, [MoltenVK](https://github.com/KhronosGroup/MoltenVK), [MoltenVR](https://github.com/MoltenVR/MoltenVR-Preview), Valve and [NotProton](https://github.com/NotProtonNot/NotProton).
+No game files, Steam credentials, MoltenVR runtime or CrossOver files are included. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licenses.

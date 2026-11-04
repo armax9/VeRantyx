@@ -62,7 +62,7 @@ def main():
         root = stage/'native-game'; (root/'game').mkdir(parents=True)
         link_entries(game/'game', root/'game', ('bin', 'hlvr'))
         link_entries(game/'game/bin', root/'game/bin', ('linuxsteamrtarm64',))
-        link_entries(game/'game/hlvr', root/'game/hlvr', ('bin', 'cfg', 'shadercache'))
+        link_entries(game/'game/hlvr', root/'game/hlvr', ('bin', 'cfg', 'shadercache', 'gameinfo.gi'))
         link_entries(game/'game/hlvr/bin', root/'game/hlvr/bin', ('linuxsteamrtarm64',))
         for rel in ('game/bin/linuxsteamrtarm64', 'game/hlvr/bin/linuxsteamrtarm64'):
             (root/rel).symlink_to(depot/rel, target_is_directory=True)
@@ -74,14 +74,18 @@ def main():
             cfg.mkdir()
         (root/'game/hlvr/shadercache/vulkan').mkdir(parents=True)
         (root/'steam_appid.txt').write_text('546560\n')
+        shutil.copy2(game/'game/hlvr/gameinfo.gi',root/'game/hlvr/gameinfo.gi')
+        from prepare_native_ui import prepare
+        prepare(game,root)
+        shutil.copy2(package/'normalize_save_names.py',stage/'normalize_save_names.py')
         if dest.exists():
-            for rel in ('native-vr-settings.txt', 'pipeline-cache', 'native-game/game/hlvr/cfg', 'native-game/game/hlvr/shadercache'):
+            for rel in ('native-vr-settings.txt', 'pipeline-cache', 'pipeline-cache-v2', 'native-game/game/hlvr/cfg', 'native-game/game/hlvr/shadercache'):
                 old, new = dest/rel, stage/rel
                 if old.is_dir():
                     shutil.copytree(old, new, dirs_exist_ok=True)
                 elif old.is_file():
                     shutil.copy2(old, new)
-        (stage/'moltenvr-install.json').write_text(json.dumps({'version':'0.1.0','depot':str(depot)}, indent=2))
+        (stage/'moltenvr-install.json').write_text(json.dumps({'version':'0.2.0','depot':str(depot)}, indent=2))
         stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         if dest.exists():
             dest.rename(dest.with_name('verantyx.bak.'+stamp))

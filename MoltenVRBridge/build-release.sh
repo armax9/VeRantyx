@@ -11,6 +11,7 @@ fi
 git -C "$kl" checkout "$commit"
 git -C "$kl" apply "$here/klepton/working-runtime.patch"
 cp -R "$here/klepton/new/runtime/." "$kl/runtime/"
+python3 "$repo/NativeARM/klepton-patches/apply.py" "$kl"
 make -C "$kl" mvk
 make -C "$repo/NativeARM/host" MVK_DIR='./moltenvk-game'
 sdk="$repo/NativeARM/build/OpenXR-SDK"
