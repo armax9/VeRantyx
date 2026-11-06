@@ -1,30 +1,27 @@
-# Native Alyx for MoltenVR 0.2.0
+# Native Alyx for MoltenVR 0.3.0
 
-Native runtime updates from VeRantyx main through November 4, 2026, adapted to the existing MoltenVR launch path.
+This update makes the former Test 3 runtime the main native MoltenVR version.
 
-- Persistent caching of rewritten shaders and improved background compilation/cache synchronization.
-- Normal game shutdown, allowing settings and caches to finish saving.
-- Darker shadows and midtones, plus the upstream shadow-flicker fix.
-- Thread-synchronization and frame/pose handling fixes.
-- Compatibility with newer Alyx submenus and native save-slot names.
-- Existing MoltenVR controls, gravity-glove interaction, stereo correction and Steam launch integration retained.
+- Prepare known graphics pipelines before play using a recipe reconstructed from your own game files.
+- Start preparation without wearing the headset. Once it finishes, the launcher waits for tracking without the old headset timeout, then starts the playable session with the runtime's real pose and resolution.
+- Verify shader, runtime and driver identities so changed game files cannot silently reuse an incompatible preparation database.
+- Correct missed display-interval counting and provide measured CPU frame-timing history.
+- Improve controller release timing with fresh input and bounded measured hand-pose history, without a throw-speed multiplier.
+- Keep 4x MSAA at every automatic fidelity level.
+- Remove leftover file/settings diagnostics and fix `KL_TRACE_FS=0` enabling file tracing.
+
+Existing graphics settings, saves, working menu compatibility, gravity-glove input, stereo/projection fixes and clean shutdown are retained. No separate launcher app is required.
 
 ## Install or update
 
-Download and extract `verantyx-moltenvr-macos-arm64-v0.2.0.zip`, then run:
+Extract the macOS ARM64 runtime ZIP and run:
 
 ```bash
 python3 install.py "/path/to/Half-Life Alyx" "/path/to/depot_546564" --notproton
 ```
 
-The same command updates a previous managed installation while preserving settings and shader caches. Use your own game content and Linux ARM64 depot. Native macOS Steam and MoltenVR must be running when playing. Omit `--notproton` for direct launcher use.
+Use your own licensed game and Linux ARM64 depot. Native macOS Steam must be running. Select **Alyx Native - MoltenVR** in Steam compatibility settings, or run `start.command` from the game folder.
 
-Select **Alyx Native - MoltenVR** in Steam. Existing launch options remain supported:
+The installer reconstructs and verifies the shader recipe locally. The initial graphics preparation can take about a minute or longer. Subsequent launches still replay the list into a fresh process, but can reuse the system Metal compiler cache. New combinations encountered in other scenes can still compile during play. After changing game shader files, rerun the installer to rebuild preparation data.
 
-```text
--novid +vr_fidelity_level_auto 0 +vr_fidelity_level 3
-```
-
-Tested by the maintainer on M3 Max / Quest 3. Installer-update, runtime, cache and shutdown checks pass. Previously unseen shaders can still need compilation on first use.
-
-Based on [VeRantyx](https://github.com/Ag3497120/VeRantyx), including native refinements by [medved91](https://github.com/medved91). No game files or MoltenVR runtime are included.
+Validation includes native level loading and normal exit, GPU draw/depth/cache restoration, controller and display-cadence regression tests, sanitizer checks and installer/cache-identity tests. These checks are not a claim of a fixed FPS increase or lower end-to-end streaming latency on every Mac.

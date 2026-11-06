@@ -38,7 +38,7 @@ def main():
     if dest.exists() and not (dest/'moltenvr-install.json').is_file():
         p.error('An unmanaged verantyx folder exists. Rename it before installing this release.')
     processes = subprocess.check_output(['ps', 'ax', '-o', 'comm='], text=True).splitlines()
-    if any(Path(x.strip()).name == 'alyx_host' for x in processes):
+    if any(Path(x.strip()).name.startswith('alyx_host') for x in processes):
         p.error('Close native Alyx before installing')
     debian = a.debian.resolve() if a.debian else game/'.alyx-native-debian'
     if not a.debian:
@@ -62,7 +62,7 @@ def main():
         root = stage/'native-game'; (root/'game').mkdir(parents=True)
         link_entries(game/'game', root/'game', ('bin', 'hlvr'))
         link_entries(game/'game/bin', root/'game/bin', ('linuxsteamrtarm64',))
-        link_entries(game/'game/hlvr', root/'game/hlvr', ('bin', 'cfg', 'shadercache', 'gameinfo.gi'))
+        link_entries(game/'game/hlvr', root/'game/hlvr', ('bin', 'cfg', 'shadercache', 'gameinfo.gi', 'vr_fidelity_levels_override.csv'))
         link_entries(game/'game/hlvr/bin', root/'game/hlvr/bin', ('linuxsteamrtarm64',))
         for rel in ('game/bin/linuxsteamrtarm64', 'game/hlvr/bin/linuxsteamrtarm64'):
             (root/rel).symlink_to(depot/rel, target_is_directory=True)
@@ -73,19 +73,35 @@ def main():
         else:
             cfg.mkdir()
         (root/'game/hlvr/shadercache/vulkan').mkdir(parents=True)
+        (root/'game/hlvr/vr_fidelity_levels_override.csv').symlink_to('../../../vr_fidelity_levels_override.csv')
         (root/'steam_appid.txt').write_text('546560\n')
         shutil.copy2(game/'game/hlvr/gameinfo.gi',root/'game/hlvr/gameinfo.gi')
         from prepare_native_ui import prepare
         prepare(game,root)
         shutil.copy2(package/'normalize_save_names.py',stage/'normalize_save_names.py')
         if dest.exists():
-            for rel in ('native-vr-settings.txt', 'pipeline-cache', 'pipeline-cache-v2', 'native-game/game/hlvr/cfg', 'native-game/game/hlvr/shadercache'):
+            for rel in ('native-vr-settings.txt', 'pipeline-cache', 'pipeline-cache-v2', 'native-game/game/hlvr/cfg', 'native-game/game/hlvr/shadercache', 'native-game/game/hlvr/save', 'preparation/cache'):
                 old, new = dest/rel, stage/rel
+                if old.exists() and new.exists() and old.resolve()==new.resolve():
+                    continue
                 if old.is_dir():
                     shutil.copytree(old, new, dirs_exist_ok=True)
                 elif old.is_file():
                     shutil.copy2(old, new)
-        (stage/'moltenvr-install.json').write_text(json.dumps({'version':'0.2.0','depot':str(depot)}, indent=2))
+        # Build shader code only from the user's own verified game files.
+        cache_installer=stage/'preparation/install_cache.py'
+        subprocess.run([sys.executable,str(cache_installer),str(stage)],check=True)
+        # Keep learned pipelines only when every recorded game-shader input matches.
+        try:
+            before=json.loads((dest/'preparation/recipe-contract.json').read_text())['expected_inputs']
+            after=json.loads((stage/'preparation/recipe-contract.json').read_text())['expected_inputs']
+            shader=lambda data:{k:v for k,v in data.items() if k.startswith(('core:', 'hlvr:'))}
+            if shader(before) and shader(before)==shader(after):
+                for name in ('recorded.foz','recorded.next.foz'):
+                    if (dest/'preparation'/name).is_file():shutil.copy2(dest/'preparation'/name,stage/'preparation'/name)
+        except (OSError,ValueError,KeyError,TypeError):
+            pass
+        (stage/'moltenvr-install.json').write_text(json.dumps({'version':'0.3.0','depot':str(depot)}, indent=2))
         stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         if dest.exists():
             dest.rename(dest.with_name('verantyx.bak.'+stamp))

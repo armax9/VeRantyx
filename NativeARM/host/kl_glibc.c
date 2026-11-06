@@ -1008,8 +1008,9 @@ static void exit_trace(const char *what, int code) {
     fprintf(stderr, "  [glibc] %s(%d) called:\n", what, code);
     kl_fault_print_frames(stderr, __builtin_frame_address(0));
 }
-static void klg__exit(int code) { exit_trace("_exit", code); fflush(NULL); if (g__exit) g__exit(code); _exit(code); }
-static void klg_exit(int code) { exit_trace("exit", code); exit(code); }
+extern void kl_fossilize_flush(void);
+static void klg__exit(int code) { kl_fossilize_flush(); exit_trace("_exit", code); fflush(NULL); if (g__exit) g__exit(code); _exit(code); }
+static void klg_exit(int code) { kl_fossilize_flush(); exit_trace("exit", code); exit(code); }
 
 // dlsym/dlopen with a trace (KL_GLIBC_TRACE_DLSYM=1): what the guest asked, on
 // which handle, and what it got.

@@ -13,6 +13,10 @@ git -C "$kl" apply "$here/klepton/working-runtime.patch"
 cp -R "$here/klepton/new/runtime/." "$kl/runtime/"
 python3 "$repo/NativeARM/klepton-patches/apply.py" "$kl"
 make -C "$kl" mvk
+fz="$repo/NativeARM/build/Fossilize"
+if [[ ! -d "$fz/.git" ]]; then git clone https://github.com/ValveSoftware/Fossilize.git "$fz"; fi
+git -C "$fz" checkout 556da9ff7d7616704dda515756219ab1dab693ec
+git -C "$fz" submodule update --init --recursive
 make -C "$repo/NativeARM/host" MVK_DIR='./moltenvk-game'
 sdk="$repo/NativeARM/build/OpenXR-SDK"
 if [[ ! -d "$sdk/.git" ]]; then git clone --depth 1 --branch release-1.1.49 https://github.com/KhronosGroup/OpenXR-SDK.git "$sdk"; fi

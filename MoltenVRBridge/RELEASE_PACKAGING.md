@@ -1,11 +1,9 @@
-# Runtime packaging
+# Runtime packaging0.3.0
 
-Version 0.2.0 integrates VeRantyx main through `421b682218dc8ff27ea3c73e9deb6567a00aec78`, retaining the fork's MoltenVR projection and input integration.
+Build with `build-release.sh`; Fossilize is pinned and linked into the native host. The complete Klepton patch plus NativeARM refinements reproduce the tested source. Strip debug symbols and ad-hoc sign the ARM64 executables before packaging.
 
-The archive contains the ARM64 host, native OpenXR bridge, two warp SPIR-V shaders, two MoltenVK builds, license notices, installer helpers, launcher and optional Steam integration. The installed host was validated by the maintainer before release; the portable host build changes the fallback MoltenVK path, strips debug symbols and uses ad-hoc signing.
+Allowlist: ARM64 host, unchanged native bridge, own warp SPIR-V shaders, validated MoltenVK libraries,4x fidelity table, preparation helpers and no-code Glovebox recipe, installer/UI generation, Steam integration, README/release notes and licenses.
 
-The bridge and bundled MoltenVK libraries retain the working installation's versions. Building with another MoltenVK version requires separate gameplay validation.
+Never include generated `.foz` files, game UI resources, game/depot libraries, saves, preferences, cache identities, shader caches, frame mappings, logs, backups, Android APKs or credentials. The installer reconstructs the recipe from the owner's VPK files and generates UI compatibility locally. The recipe checker must confirm no shader code before every package.
 
-Do not include `guest-lib`, game assets, native-game, settings, saves, logs, shader caches, shared frame mappings, backups or credentials. UI resources are patched locally by `prepare_native_ui.py` using the owner's VPK; no compiled game UI resources are redistributed. Debian libraries are downloaded from their official mirror by the installer.
-
-The complete pinned Klepton baseline patch is in `klepton/`. The build script applies it and then the current NativeARM Klepton refinements. Preserve all third-party notices.
+Validate source/runtime tests, synthetic installer updates, actual recipe reconstruction and package content/checksums. Download the published asset again and check its SHA256 after upload. Performance results from the maintainer's Mac are not universal FPS/latency claims.

@@ -34,6 +34,10 @@ int main(int argc, char **argv) {
     assert(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600); unlink(path);
     fd = guest_creat(path, 0644); assert(fd >= 0); close(fd);
     assert(stat(path, &st) == 0 && (st.st_mode & 0777) == 0644); unlink(path);
+    // Trace regression fixture: these paths used to log unconditionally.
+    char cfg[PATH_MAX]; snprintf(cfg,sizeof cfg,"%s/cfg",argv[1]); mkdir(cfg,0700);
+    snprintf(path,sizeof path,"%s/machine_video.txt",cfg);
+    fd = guest_open(path, 01 | 0100 | 0200, 0600); assert(fd >= 0); close(fd); unlink(path);
     umask(mask);
     puts("Native host: Linux open/openat/creat ABI, file modes and private Steam path mapping passed");
     return 0;

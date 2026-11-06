@@ -20,45 +20,76 @@ if [[ "${ALYX_NATIVE_DRY_RUN:-0}" == 1 ]]; then
 fi
 install="$(cd "$(dirname "$0")" && pwd)"
 base="$install/verantyx"
+test="$base/preparation"
+mkdir -p "$test"
 # Experimental profile integration disabled; use the native MoltenVR runtime.
 unset MVR_NATIVE_AGREEMENT_FILE
+if ! pgrep -x steam_osx >/dev/null; then
+ echo 'Start native Steam before launching Alyx.'; exit 1
+fi
 game="$base/native-game"
-[[ -d "$game/game/bin/linuxsteamrtarm64" && -d "$base/guest-lib" ]] || { echo 'Run install.py with your ARM64 depot first.' >&2; exit 1; }
 logs=$(mktemp -d "${TMPDIR:-/tmp}/alyx-native.XXXXXX")
 if pgrep -f "$base/alyx_host" >/dev/null; then
- echo 'Close the previous native Alyx session and retry.';exit 1
+ echo 'Close the previous Alyx session before starting another.';exit 1
 fi
 if pgrep -f '[/]HardwareEncoder' >/dev/null; then
- echo 'Close the previous VeRantyx encoder session and retry.';exit 1
+ echo 'Close the previous VeRantyx encoder before starting Alyx.';exit 1
 fi
 export KL_MVK_DIR="$base/moltenvk-game"
 export VERANTYX_SHADER_DIR="$base"
 export VERANTYX_SETTINGS_FILE="$base/native-vr-settings.txt"
-export VERANTYX_SHARED_FRAME="$game/vr_shared_frame.dat"
+export VERANTYX_SHARED_FRAME="$test/vr_shared_frame.dat"
 export VERANTYX_BRIDGE_READY="$logs/ready"
 export MVK_CONFIG_LOG_LEVEL=0
 export ALYX_ENGINE_LOG=0
 export VERANTYX_QUIET=1
 export KL_VK_TRACE=0
 export KL_TRACE=0
-export KL_TRACE_FS=0
+unset KL_TRACE_FS ALYX_SETTINGS_TRACE KL_VERBOSE_ALL KL_FULL
 unset ALYX_PIPELINE_RECORDER_LIBRARY ALYX_PIPELINE_RECORD_FILE
 # Report the actual Mac memory through the Linux compatibility layer.
 mem_bytes=$(/usr/sbin/sysctl -n hw.memsize)
 export KL_MEM_TOTAL_MB="$((mem_bytes / 1048576))"
-export KL_VK_ASYNC_CACHE_DIR="$base/pipeline-cache"
+export KL_VK_ASYNC_CACHE_DIR="$test/cache/workers"
 mkdir -p "$KL_VK_ASYNC_CACHE_DIR"
 export VERANTYX_ASYNC_PIPELINES=1
 export KL_VK_ASYNC_PIPELINES=1
 unset KL_VK_WAIT_FIRST_USE
 # Persistent converted shader archive, separate from the previous cache format.
-export KL_VK_PIPELINE_ARCHIVE="$base/pipeline-cache-v2/native.bin"
-mkdir -p "$base/pipeline-cache-v2"
+export KL_VK_PIPELINE_ARCHIVE="$test/cache/native.bin"
+mkdir -p "$test/cache"
 export KL_VK_PRIVATE_CACHE=1
 export KL_VK_ALYX_STATIC_COLOR_WRITE=1
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=0
 export VERANTYX_NATIVE_EXPOSURE_EV=-1
 export VERANTYX_NATIVE_QUIT_FILE="$logs/quit.request"
+/usr/bin/python3 "$test/manage_cache.py" verify
+export KL_VK_FOZ_REPLAY="$test/alyx.foz"
+if [[ "${ALYX_NATIVE_EXTENDED_PREWARM:-0}" == 1 && -s "$test/supplemental.foz" ]]; then
+ export KL_VK_FOZ_REPLAY="$KL_VK_FOZ_REPLAY:$test/supplemental.foz"
+fi
+export KL_VK_FOZ_RECORD="$test/recorded.next.foz"
+export KL_VK_FOZ_DIR="$test"
+export KL_VK_FOZ_RECORD_SYNC=0
+export KL_VK_FOZ_REPLAY_BLOCK=1
+export KL_VK_FOZ_THREADS="${ALYX_NATIVE_PREPARE_THREADS:-3}"
+export KL_VK_ASYNC_THREADS="${ALYX_NATIVE_PREPARE_THREADS:-3}"
+# Preparation can use the CPU; during play, preserve the original worker budget.
+export KL_VK_ASYNC_GAME_THREADS=3
+export KL_VK_FOZ_REBUILD_CACHE=1
+export KL_VK_FOZ_SLOW_MS=0
+export ALYX_PREWARM_PROGRESS="$test/progress.json"
+unset ALYX_V2_COMPILE_METRICS
+rm -f "$ALYX_PREWARM_PROGRESS"
+# Recover complete recordings from an interrupted previous session.
+if [[ -s "$test/recorded.next.foz" ]]; then
+ /usr/bin/python3 "$test/merge_recordings.py" "$test/recorded.foz" "$test/recorded.next.foz"
+fi
+# Read the previous session's recording while writing the new session separately.
+if [[ -s "$test/recorded.foz" ]]; then
+ export KL_VK_FOZ_REPLAY="$KL_VK_FOZ_REPLAY:$test/recorded.foz"
+fi
+
 
 export VERANTYX_BENCH=0
 unset VERANTYX_EYE_WIDTH VERANTYX_EYE_HEIGHT
@@ -72,9 +103,9 @@ export MOLTENVR_FPS_FILE="$logs/runtime-fps"
 printf '%s\n' "$VERANTYX_DISPLAY_HZ" > "$MOLTENVR_FPS_FILE"
 unset VERANTYX_SUBMIT_CURRENT_POSE
 export VERANTYX_SHARED_FRUSTUM=1
-# Use runtime/default IPD; no maintainer-specific calibration.
+unset VERANTYX_IPD
 rm -f "$VERANTYX_BRIDGE_READY" "$VERANTYX_RUNTIME_RESOLUTION_FILE"
-bridge_pid='';game_pid='';settings_pid=''
+bridge_pid='';game_pid='';settings_pid='';progress_pid=''
 
 cleanup(){
  if [[ -n "$game_pid" ]] && kill -0 "$game_pid" 2>/dev/null;then
@@ -91,6 +122,10 @@ cleanup(){
   done
   wait "$game_pid" 2>/dev/null || true
  fi
+ if [[ -n "$progress_pid" ]]; then kill -TERM "$progress_pid" 2>/dev/null || true; wait "$progress_pid" 2>/dev/null || true; fi
+ if [[ -s "$test/recorded.next.foz" ]]; then
+  /usr/bin/python3 "$test/merge_recordings.py" "$test/recorded.foz" "$test/recorded.next.foz"
+ fi
  if [[ -n "$settings_pid" ]];then kill -TERM "$settings_pid" 2>/dev/null || true;wait "$settings_pid" 2>/dev/null || true;fi
  if [[ -n "$bridge_pid" ]];then kill -TERM "$bridge_pid" 2>/dev/null || true;wait "$bridge_pid" 2>/dev/null || true;fi
  rm -rf "$logs"
@@ -100,13 +135,27 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 "$base/bridge" > /dev/null 2>&1 &
 bridge_pid=$!
-echo 'Waiting for MoltenVR tracking. Wear the Quest headset.'
-for _ in {1..60};do
+# Preparation uses a private guest and never initializes the playable camera.
+# The playable guest starts only after the bridge supplies real tracking/resolution.
+for _ in 1 2; do
  [[ -f "$VERANTYX_BRIDGE_READY" ]] && break
- if ! kill -0 "$bridge_pid" 2>/dev/null;then echo "VR bridge exited before tracking became ready.";exit 1;fi
  sleep 1
 done
-if [[ ! -f "$VERANTYX_BRIDGE_READY" ]];then echo "Tracking timeout.";exit 1;fi
+if [[ ! -f "$VERANTYX_BRIDGE_READY" ]]; then
+ echo 'Preparing shaders without the headset. You can put it on later.'
+ /usr/bin/python3 "$test/prepare_cache.py" &
+ settings_pid=$!
+ if wait "$settings_pid"; then settings_pid=''
+ else settings_pid=''; echo 'Shader preparation failed; see preparation.log.'; exit 1; fi
+ rm -f "$ALYX_PREWARM_PROGRESS"
+ echo 'Shaders prepared. Waiting for MoltenVR tracking; no headset timeout.'
+fi
+while [[ ! -f "$VERANTYX_BRIDGE_READY" ]]; do
+ if ! kill -0 "$bridge_pid" 2>/dev/null; then
+  echo 'VR bridge exited. Start MoltenVR and launch Alyx again.'; exit 1
+ fi
+ sleep 1
+done
 read -r runtime_width runtime_height < "$VERANTYX_RUNTIME_RESOLUTION_FILE"
 if ! [[ "$runtime_width" =~ ^[0-9]+$ && "$runtime_height" =~ ^[0-9]+$ ]] || (( runtime_width < 1 || runtime_width > 8192 || runtime_height < 1 || runtime_height > 8192 )); then
  echo 'Invalid MoltenVR runtime resolution.'; exit 1
@@ -116,10 +165,12 @@ export VERANTYX_OUTPUT_EYE_HEIGHT="$runtime_height"
 echo "MoltenVR resolution: ${runtime_width}x${runtime_height} per eye"
 /usr/bin/python3 "$base/normalize_save_names.py" "$game/game/hlvr/save"
 cd "$game"
-"$base/alyx_host" --libdir "$base/guest-lib" --game "$game" -- -vr -steam -novid -noasserts -nopassiveasserts -vulkan -nowindow "$@" > /dev/null 2>&1 &
+"$base/alyx_host" --libdir "$base/guest-lib" --game "$game" -- -vr -steam -novid -net_no_parallel_build -noasserts -nopassiveasserts -vulkan -nowindow "$@" > >( /usr/bin/python3 "$test/filter_log.py" "$test/prewarm.log" ) 2>&1 &
 game_pid=$!
-echo "Alyx native → MoltenVR. Steam launch parameters supported."
-echo 'Controllers connected: test hands, trigger/grip, sticks and A/B/X/Y. Stop: Ctrl+C.'
+/usr/bin/python3 "$test/show_progress.py" "$ALYX_PREWARM_PROGRESS" "$game_pid" &
+progress_pid=$!
+echo "Native Alyx → MoltenVR. Preparing known shaders before play."
+echo 'Stop: Ctrl+C. Close through the game menu to save settings and cache.'
 while kill -0 "$game_pid" 2>/dev/null && kill -0 "$bridge_pid" 2>/dev/null;do
  sleep 5
 

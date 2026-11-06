@@ -1,0 +1,3 @@
+
+# Unified patches are source data; context lines intentionally contain spaces.
+*.patch -whitespace

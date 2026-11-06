@@ -1,6 +1,6 @@
 # Third-party notices
 
-All code in this repository was written for VeRantyx, with these exceptions:
+This fork builds on VeRantyx and the following third-party components:
 
 - `NativeARM/vrruntime/openvr/` (and, on the `wine` branch,
   `VRDriver/include/openvr.h` / `openvr_driver.h`) are the OpenVR SDK headers, Copyright (c)
@@ -39,3 +39,9 @@ Apple's Game Porting Toolkit (D3DMetal) is not used, distributed or required.
 ## MoltenVR fork additions
 
 MoltenVRBridge uses Khronos OpenXR/Vulkan headers (Apache-2.0 OR MIT / Apache-2.0). The release includes MoltenVK (Apache-2.0), patched Klepton linked into the host (MIT), and ALVR hand-skeleton data (MIT). Full notices accompany the archive. MoltenVR itself, Valve game files and Debian libraries are not bundled. The installer fetches Debian dependencies from their official mirror.
+
+## Pipeline preparation in 0.3.0
+
+`MoltenVRBridge/preparation/pipelines.py`, `gb/`, `alyx.recipe` and the replay implementation in `NativeARM/host/kl_fossilize.cpp` are adapted from Glovebox (MIT). Its full license is included in `MoltenVRBridge/preparation/Glovebox-LICENSE`. The recipe contains reconstruction references and Vulkan state, not game shader bytecode. Fossilize is linked into the host from pinned revision `556da9ff7d7616704dda515756219ab1dab693ec` (MIT), with RapidJSON (MIT), miniz (MIT) and Khronos Vulkan declarations (Apache-2.0 OR MIT). Full notices accompany the runtime ZIP.
+
+Qualyx and Alyx Jailbreak were used as comparative implementation references. No closed application binary patches, Android game libraries or game-derived shader catalog are redistributed from those APKs.

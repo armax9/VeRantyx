@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ASAN_OPTIONS=halt_on_error=1 TSAN_OPTIONS=halt_on_error=1
 printf '%s\n' '-1.2 0.8 -1 1 -0.8 1.2 -1 1' > "$TMP/vr_verantyx_tangents.txt"
 "$TEST" "$TMP/frame.dat" "$NATIVE/tests/fixtures/actions.json"
+"$TEST" "$TMP/cadence.dat" --cadence-only
 mkdir -p "$TMP/prefix/drive_c"
 "$TEST" --without-shared "$TMP/prefix"
 [[ -z "$(ls -A "$TMP/prefix/drive_c")" ]]

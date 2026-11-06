@@ -95,3 +95,9 @@ check-sanitize: $(OUT)/runtime_asan $(OUT)/runtime_tsan $(OUT)/async_asan $(OUT)
 	$(OUT)/async_tsan
 
 .PHONY: check check-syntax check-encoder check-sanitize check-app check-pipeline-cache check-loading-map
+
+$(OUT)/compile_budget: tests/compile_budget.c klepton-patches/runtime/kl_vk_async.inc
+	@mkdir -p $(OUT)
+	$(CC) $(ASYNC_FLAGS) $< -o $@
+check-compile-budget: $(OUT)/compile_budget
+	$(OUT)/compile_budget
