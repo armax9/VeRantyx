@@ -7,25 +7,24 @@
 #include <ctime>
 #include <vector>
 struct SharedBridge {
- bool livePoseObserved=false; unsigned originSamples=0; XrPosef originPrevious{}; bool originReady=false; float originYaw=0, originX=0, originY=0, originZ=0;
+ bool originProvisional=false;bool livePoseObserved=false; unsigned originSamples=0; XrPosef originPrevious{}; bool originReady=false; float originYaw=0, originX=0, originY=0, originZ=0;
  uint8_t* map=nullptr; vrrt::DoubleBufferHeader* header=nullptr; uint32_t sequence=0;
  vrrt::SharedFrame frame{}; vrrt::FrameProjection projection{}; std::vector<uint8_t> pixels, scratch;
  bool open(){const char* path=getenv("VERANTYX_SHARED_FRAME");if(!path)return false;int fd=::open(path,O_RDWR|O_CREAT,0644);if(fd<0)return false;struct stat st{};if(fstat(fd,&st)||((size_t)st.st_size<vrrt::kSharedMapSize&&ftruncate(fd,vrrt::kSharedMapSize))){close(fd);return false;}void* p=mmap(nullptr,vrrt::kSharedMapSize,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);close(fd);if(p==MAP_FAILED)return false;map=(uint8_t*)p;header=(vrrt::DoubleBufferHeader*)p;__atomic_store_n(&header->captureSourceMode,0,__ATOMIC_RELEASE);return true;}
  ~SharedBridge(){if(map)munmap(map,vrrt::kSharedMapSize);}
  static void matrix(const XrPosef& p,float* m){auto q=p.orientation;float x=q.x,y=q.y,z=q.z,w=q.w;memset(m,0,64);m[0]=1-2*(y*y+z*z);m[1]=2*(x*y+z*w);m[2]=2*(x*z-y*w);m[4]=2*(x*y-z*w);m[5]=1-2*(x*x+z*z);m[6]=2*(y*z+x*w);m[8]=2*(x*z+y*w);m[9]=2*(y*z-x*w);m[10]=1-2*(x*x+y*y);m[12]=p.position.x;m[13]=p.position.y;m[14]=p.position.z;m[15]=1;}
  void tracking(const XrView* v,bool valid,const vrrt::SharedHands& controls){vrrt::SharedHands hands=controls;XrPosef head=v[0].pose;head.position={(v[0].pose.position.x+v[1].pose.position.x)/2,(v[0].pose.position.y+v[1].pose.position.y)/2,(v[0].pose.position.z+v[1].pose.position.z)/2};matrix(head,hands.headTransform);
- if(valid&&!originReady){
- float dx=v[1].pose.position.x-v[0].pose.position.x,dy=v[1].pose.position.y-v[0].pose.position.y,dz=v[1].pose.position.z-v[0].pose.position.z;
- float ipd=sqrtf(dx*dx+dy*dy+dz*dz);
- float dist=head.position.x*head.position.x+head.position.y*head.position.y+head.position.z*head.position.z;
- float px=head.position.x-originPrevious.position.x,py=head.position.y-originPrevious.position.y,pz=head.position.z-originPrevious.position.z;
- auto q=head.orientation,r=originPrevious.orientation;float dot=fabsf(q.x*r.x+q.y*r.y+q.z*r.z+q.w*r.w);
- livePoseObserved=livePoseObserved||(std::isfinite(dist)&&(dist>0.000001f||q.x*q.x+q.y*q.y+q.z*q.z>0.0001f));
- bool plausible=livePoseObserved&&std::isfinite(dist)&&ipd>0.045f&&ipd<0.085f;
- bool stable=px*px+py*py+pz*pz<0.0004f&&dot>0.999f;
- originSamples=plausible?(stable?originSamples+1:1):0;originPrevious=head;
- if(originSamples<72){hands.headTracked=0;return;}
- originYaw=atan2f(hands.headTransform[8],hands.headTransform[10]);originX=head.position.x;originY=head.position.y-1.65f;originZ=head.position.z;originReady=true;printf("Tracking origin: yaw %.2f deg, position %.3f %.3f %.3f; game head height 1.65m\n",originYaw*180/3.14159265f,originX,originY,originZ);}
+ const float dist=head.position.x*head.position.x+head.position.y*head.position.y+head.position.z*head.position.z;
+ const auto orientation=head.orientation;
+ const bool live=std::isfinite(dist)&&(dist>0.000001f||orientation.x*orientation.x+orientation.y*orientation.y+orientation.z*orientation.z>0.0001f);
+ if(valid&&(!originReady||(originProvisional&&live))){
+  // A neutral but valid runtime pose must not block game startup. Rebase once
+  // when live tracking arrives, preserving the default camera/menu location.
+  originYaw=atan2f(hands.headTransform[8],hands.headTransform[10]);
+  originX=head.position.x;originY=head.position.y-1.6f;originZ=head.position.z;
+  originReady=true;originProvisional=!live;originSamples=1;
+  printf("Tracking origin: %s, game head height 1.6m\n",originProvisional?"provisional":"live");
+ }
  if(originReady){float c=cosf(originYaw),s=sinf(originYaw);for(int col=0;col<3;col++){float x=hands.headTransform[col*4],z=hands.headTransform[col*4+2];hands.headTransform[col*4]=c*x-s*z;hands.headTransform[col*4+2]=s*x+c*z;}float x=head.position.x-originX,z=head.position.z-originZ;hands.headTransform[12]=c*x-s*z;hands.headTransform[13]=head.position.y-originY;hands.headTransform[14]=s*x+c*z;}
  if(originReady){float c=cosf(originYaw),s=sinf(originYaw);for(int h=0;h<2;h++){float* m=h?hands.rightTransform:hands.leftTransform;bool tracked=h?hands.rightTracked:hands.leftTracked;if(!tracked)continue;for(int col=0;col<3;col++){float x=m[col*4],z=m[col*4+2];m[col*4]=c*x-s*z;m[col*4+2]=s*x+c*z;}float x=m[12]-originX,z=m[14]-originZ;m[12]=c*x-s*z;m[13]-=originY;m[14]=s*x+c*z;for(float* velocity:{h?hands.rightVelocity:hands.leftVelocity,h?hands.rightAngularVelocity:hands.leftAngularVelocity}){float x=velocity[0],z=velocity[2];velocity[0]=c*x-s*z;velocity[2]=s*x+c*z;}}}
  hands.headTracked=valid;struct timespec ts{};clock_gettime(CLOCK_MONOTONIC,&ts);hands.visionTimestamp=ts.tv_sec+ts.tv_nsec*1e-9;for(int e=0;e<2;e++){float* t=e?hands.rightTangents:hands.leftTangents;t[0]=tan(v[e].fov.angleLeft);t[1]=tan(v[e].fov.angleRight);t[2]=tan(v[e].fov.angleDown);t[3]=tan(v[e].fov.angleUp);}int32_t seq=__atomic_load_n(&header->poseSequence,__ATOMIC_RELAXED);seq=(seq+1)|1;__atomic_store_n(&header->poseSequence,seq,__ATOMIC_RELEASE);memcpy(map+vrrt::kHandsOffset,&hands,sizeof(hands));__atomic_store_n(&header->poseSequence,seq+1,__ATOMIC_RELEASE);}

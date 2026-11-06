@@ -1,8 +1,8 @@
-# Runtime packaging0.3.0
+# Runtime packaging 0.3.1
 
 Build with `build-release.sh`; Fossilize is pinned and linked into the native host. The complete Klepton patch plus NativeARM refinements reproduce the tested source. Strip debug symbols and ad-hoc sign the ARM64 executables before packaging.
 
-Allowlist: ARM64 host, unchanged native bridge, own warp SPIR-V shaders, validated MoltenVK libraries,4x fidelity table, preparation helpers and no-code Glovebox recipe, installer/UI generation, Steam integration, README/release notes and licenses.
+Allowlist: ARM64 host, native bridge and loading-renderer library, own warp SPIR-V shaders, validated MoltenVK libraries,4x fidelity table, preparation helpers and no-code Glovebox recipe, installer/UI generation, Steam integration, README/release notes and licenses.
 
 Never include generated `.foz` files, game UI resources, game/depot libraries, saves, preferences, cache identities, shader caches, frame mappings, logs, backups, Android APKs or credentials. The installer reconstructs the recipe from the owner's VPK files and generates UI compatibility locally. The recipe checker must confirm no shader code before every package.
 

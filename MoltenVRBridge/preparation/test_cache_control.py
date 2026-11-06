@@ -20,6 +20,14 @@ class IdentityTests(unittest.TestCase):
         self.recipe.write_bytes(b'pipeline-recipe')
         self.inputs = {'host': self.host, 'recipe': self.recipe}
 
+    def test_progress_reports_actual_hash_and_metadata_reuse(self):
+        events=[]
+        cc.verify(self.state,self.inputs,{},on_progress=lambda *event:events.append(event))
+        self.assertEqual(events,[(1,2,1,0),(2,2,2,0)])
+        events.clear()
+        cc.verify(self.state,self.inputs,{},on_progress=lambda *event:events.append(event))
+        self.assertEqual(events,[(1,2,0,1),(2,2,0,2)])
+
     def test_full_verify_cached_verify_force_and_policy(self):
         first = cc.verify(self.state, self.inputs, {'msaa': '4'})
         self.assertEqual((first['hashed'], first['reused']), (2, 0))

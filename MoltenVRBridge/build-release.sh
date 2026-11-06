@@ -28,4 +28,7 @@ clang++ -arch arm64 -std=c++17 -O2 "$here/bridge.cpp" -I"$sdk/include" \
 mvk_link=$(otool -L "$here/bridge" | awk '/libMoltenVK.dylib/ {print $1; exit}')
 install_name_tool -change "$mvk_link" '@loader_path/libMoltenVK.dylib' "$here/bridge"
 codesign --force --sign - "$here/bridge"
-echo 'Built alyx_host, bridge and warp shaders. See RELEASE_PACKAGING.md for the binary allowlist.'
+xcrun swiftc -emit-library -O -target arm64-apple-macos14.2 "$here/loading/LoadingScene.swift" -o "$here/libalyxloading.dylib"
+install_name_tool -id '@loader_path/libalyxloading.dylib' "$here/libalyxloading.dylib"
+codesign --force --sign - "$here/libalyxloading.dylib"
+echo 'Built alyx_host, bridge, loading renderer and warp shaders. See RELEASE_PACKAGING.md for the binary allowlist.'

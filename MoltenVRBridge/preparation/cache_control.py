@@ -165,7 +165,7 @@ def vpk_inputs(label: str, directory_file: str | Path) -> dict[str, Path]:
     return result
 
 def verify(state_path: str | Path, inputs: dict[str, str | Path],
-           policy: dict[str, str], force: bool = False) -> dict[str, Any]:
+           policy: dict[str, str], force: bool = False, on_progress=None) -> dict[str, Any]:
     if not inputs:
         raise IdentityError("At least one input file is required")
     state = load_state(state_path)
@@ -179,6 +179,7 @@ def verify(state_path: str | Path, inputs: dict[str, str | Path],
         digests[key] = record
         reused += int(hit)
         hashed += int(not hit)
+        if on_progress is not None:on_progress(hashed+reused,len(inputs),hashed,reused)
     identity = {"schema": SCHEMA, "inputs": records, "policy": dict(sorted(policy.items()))}
     fingerprint = _json_hash(identity)
     result = {"fingerprint": fingerprint, "identity": identity,

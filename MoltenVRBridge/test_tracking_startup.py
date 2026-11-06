@@ -1,23 +1,20 @@
+"""Runtime setup may precede play; headset tracking must never gate it."""
 from pathlib import Path
-import subprocess,tempfile,os
-script=Path(__file__).with_name('start.command').read_text()
-block=script[script.index('# Preparation uses a private guest'):script.index('read -r runtime_width runtime_height')]
-for case in ('ready','late','preparation-fails','bridge-exits'):
- with tempfile.TemporaryDirectory() as directory:
-  root=Path(directory);ready=root/'ready';marker=root/'prepared'
-  (root/'prepare_cache.py').write_text("from pathlib import Path\nimport os,sys\nPath(os.environ['MARKER']).touch()\nsys.exit(7 if os.environ['CASE']=='preparation-fails' else 0)\n")
-  if case=='ready':ready.touch()
-  env={**os.environ,'CASE':case,'MARKER':str(marker),'VERANTYX_BRIDGE_READY':str(ready),'test':str(root),'ALYX_PREWARM_PROGRESS':str(root/'progress')}
+import os,subprocess,tempfile
+source=Path(__file__).with_name('start.command').read_text()
+block=source[source.index('# Runtime configuration is available'):source.index('read -r runtime_width runtime_height')]
+assert 'BRIDGE_READY' not in block and 'prepare_cache.py' not in block
+for case in ('config-ready-no-headset','config-later-no-headset','bridge-dead','config-missing'):
+ with tempfile.TemporaryDirectory() as folder:
+  resolution=Path(folder)/'resolution'
+  (Path(folder)/'manage_cache.py').write_text('')
+  if case=='config-ready-no-headset':resolution.write_text('1728 1984\n')
   script='''set -euo pipefail
 bridge_pid=$$
-if [[ "$CASE" == bridge-exits ]]; then bridge_pid=99999999; fi
-settings_pid=''
-sleep(){ if [[ "$CASE" == late && -f "$MARKER" ]]; then touch "$VERANTYX_BRIDGE_READY"; fi; }
-'''+block+"\necho 'GAME_STARTS_WITH_TRACKING'\n"
-  r=subprocess.run(['/bin/bash','-c',script],env=env,capture_output=True,text=True,timeout=10)
-  if case in ('ready','late'):
-   assert r.returncode==0 and 'GAME_STARTS_WITH_TRACKING' in r.stdout,(case,r)
-   assert marker.exists()==(case=='late')
-  else:assert r.returncode!=0 and 'GAME_STARTS_WITH_TRACKING' not in r.stdout,(case,r)
+if [[ "$CASE" == bridge-dead ]]; then bridge_pid=99999999; fi
+sleep(){ if [[ "$CASE" == config-later-no-headset ]]; then echo '1728 1984' > "$VERANTYX_RUNTIME_RESOLUTION_FILE"; fi; }
+'''+block+"\necho GAME_STARTS_WITHOUT_HEADSET\n"
+  result=subprocess.run(['/bin/bash','-c',script],env={**os.environ,'CASE':case,'VERANTYX_RUNTIME_RESOLUTION_FILE':str(resolution),'test':folder,'ALYX_PREWARM_PROGRESS':str(Path(folder)/'progress')},capture_output=True,text=True,timeout=5)
+  if 'no-headset' in case:assert result.returncode==0 and 'GAME_STARTS_WITHOUT_HEADSET' in result.stdout,(case,result)
+  else:assert result.returncode and 'GAME_STARTS_WITHOUT_HEADSET' not in result.stdout,(case,result)
   print(case,'passed')
-print('Tracking startup: preparation precedes headset wait; online fast path and both failure paths passed.')

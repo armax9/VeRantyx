@@ -21,10 +21,13 @@ fi
 install="$(cd "$(dirname "$0")" && pwd)"
 base="$install/verantyx"
 test="$base/preparation"
+if [[ "${ALYX_SESSION_LOCKED:-0}" != 1 ]]; then
+ exec /usr/bin/python3 "$test/session_runner.py" "$0" "$@"
+fi
 mkdir -p "$test"
 # Experimental profile integration disabled; use the native MoltenVR runtime.
 unset MVR_NATIVE_AGREEMENT_FILE
-if ! pgrep -x steam_osx >/dev/null; then
+if [[ "${STEAM_COMPAT_APP_ID:-${SteamAppId:-}}" != 546560 ]] && ! /usr/bin/pgrep -x steam_osx >/dev/null; then
  echo 'Start native Steam before launching Alyx.'; exit 1
 fi
 game="$base/native-game"
@@ -58,12 +61,19 @@ unset KL_VK_WAIT_FIRST_USE
 # Persistent converted shader archive, separate from the previous cache format.
 export KL_VK_PIPELINE_ARCHIVE="$test/cache/native.bin"
 mkdir -p "$test/cache"
+mkdir -p "$test/cache/tmp" "$test/cache/xdg"
+export XDG_CACHE_HOME="$test/cache/xdg"
+export TMPDIR="$test/cache/tmp/"
 export KL_VK_PRIVATE_CACHE=1
 export KL_VK_ALYX_STATIC_COLOR_WRITE=1
 export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=0
 export VERANTYX_NATIVE_EXPOSURE_EV=-1
 export VERANTYX_NATIVE_QUIT_FILE="$logs/quit.request"
-/usr/bin/python3 "$test/manage_cache.py" verify
+export VERANTYX_NATIVE_LOADING_FILE="$logs/loading.json"
+export VERANTYX_NATIVE_STAGE_FILE="$logs/stage.json"
+export VERANTYX_NATIVE_GAME_DIR="$install/game/hlvr"
+export VERANTYX_LOADING_LIBRARY="$base/libalyxloading.dylib"
+export VERANTYX_LOADING_CAPABILITY_FILE="$logs/loading-capability"
 export KL_VK_FOZ_REPLAY="$test/alyx.foz"
 if [[ "${ALYX_NATIVE_EXTENDED_PREWARM:-0}" == 1 && -s "$test/supplemental.foz" ]]; then
  export KL_VK_FOZ_REPLAY="$KL_VK_FOZ_REPLAY:$test/supplemental.foz"
@@ -80,7 +90,7 @@ export KL_VK_FOZ_REBUILD_CACHE=1
 export KL_VK_FOZ_SLOW_MS=0
 export ALYX_PREWARM_PROGRESS="$test/progress.json"
 unset ALYX_V2_COMPILE_METRICS
-rm -f "$ALYX_PREWARM_PROGRESS"
+printf '%s\n' '{"state":0,"phase":"checking","done":0,"total":0}' > "$ALYX_PREWARM_PROGRESS"
 # Recover complete recordings from an interrupted previous session.
 if [[ -s "$test/recorded.next.foz" ]]; then
  /usr/bin/python3 "$test/merge_recordings.py" "$test/recorded.foz" "$test/recorded.next.foz"
@@ -133,29 +143,20 @@ cleanup(){
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-"$base/bridge" > /dev/null 2>&1 &
+"$base/bridge" > >( /usr/bin/python3 "$test/bridge_log.py" "$test/bridge-startup.log" ) 2>&1 &
 bridge_pid=$!
-# Preparation uses a private guest and never initializes the playable camera.
-# The playable guest starts only after the bridge supplies real tracking/resolution.
-for _ in 1 2; do
- [[ -f "$VERANTYX_BRIDGE_READY" ]] && break
- sleep 1
+# Runtime configuration is available without a worn headset. Never gate the
+# playable process on tracking, a stable pose, or a separate preparation guest.
+for _ in {1..50}; do
+ [[ -s "$VERANTYX_RUNTIME_RESOLUTION_FILE" ]] && break
+ if ! kill -0 "$bridge_pid" 2>/dev/null; then echo 'MoltenVR runtime could not initialize.'; exit 1; fi
+ sleep 0.1
 done
-if [[ ! -f "$VERANTYX_BRIDGE_READY" ]]; then
- echo 'Preparing shaders without the headset. You can put it on later.'
- /usr/bin/python3 "$test/prepare_cache.py" &
- settings_pid=$!
- if wait "$settings_pid"; then settings_pid=''
- else settings_pid=''; echo 'Shader preparation failed; see preparation.log.'; exit 1; fi
- rm -f "$ALYX_PREWARM_PROGRESS"
- echo 'Shaders prepared. Waiting for MoltenVR tracking; no headset timeout.'
+if [[ ! -s "$VERANTYX_RUNTIME_RESOLUTION_FILE" ]]; then
+ echo 'MoltenVR runtime configuration unavailable. Start MoltenVR and retry.'; exit 1
 fi
-while [[ ! -f "$VERANTYX_BRIDGE_READY" ]]; do
- if ! kill -0 "$bridge_pid" 2>/dev/null; then
-  echo 'VR bridge exited. Start MoltenVR and launch Alyx again.'; exit 1
- fi
- sleep 1
-done
+/usr/bin/python3 "$test/manage_cache.py" verify
+printf '%s\n' '{"state":0,"phase":"initializing","done":0,"total":0}' > "$ALYX_PREWARM_PROGRESS"
 read -r runtime_width runtime_height < "$VERANTYX_RUNTIME_RESOLUTION_FILE"
 if ! [[ "$runtime_width" =~ ^[0-9]+$ && "$runtime_height" =~ ^[0-9]+$ ]] || (( runtime_width < 1 || runtime_width > 8192 || runtime_height < 1 || runtime_height > 8192 )); then
  echo 'Invalid MoltenVR runtime resolution.'; exit 1
@@ -163,6 +164,8 @@ fi
 export VERANTYX_OUTPUT_EYE_WIDTH="$runtime_width"
 export VERANTYX_OUTPUT_EYE_HEIGHT="$runtime_height"
 echo "MoltenVR resolution: ${runtime_width}x${runtime_height} per eye"
+# Do not make the guest wait for an unavailable optional stage renderer.
+if [[ ! -s "$VERANTYX_LOADING_CAPABILITY_FILE" ]]; then unset VERANTYX_NATIVE_STAGE_FILE; fi
 /usr/bin/python3 "$base/normalize_save_names.py" "$game/game/hlvr/save"
 cd "$game"
 "$base/alyx_host" --libdir "$base/guest-lib" --game "$game" -- -vr -steam -novid -net_no_parallel_build -noasserts -nopassiveasserts -vulkan -nowindow "$@" > >( /usr/bin/python3 "$test/filter_log.py" "$test/prewarm.log" ) 2>&1 &

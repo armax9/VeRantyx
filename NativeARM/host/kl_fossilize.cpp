@@ -167,6 +167,7 @@ static void write_progress(unsigned done, unsigned total, int state) {
     const char *path = getenv("ALYX_PREWARM_PROGRESS");
     if (!path || !*path) return;
     std::lock_guard<std::mutex> guard(progress_mu);
+    if(state==1){done=g_prog_done.load();total=g_prog_total.load();}
     std::string temp=std::string(path)+".tmp";
     FILE *f=fopen(temp.c_str(),"w");
     if (!f) return;
@@ -350,8 +351,6 @@ void replay_db(VkDevice dev, const Fns &f, const std::string &path, unsigned nth
         if (!db->get_hash_list_for_resource_tag(tag, &n, nullptr)) continue;
         std::vector<Hash> hashes(n);
         if (!db->get_hash_list_for_resource_tag(tag, &n, hashes.data())) continue;
-        if (tag == RESOURCE_GRAPHICS_PIPELINE || tag == RESOURCE_COMPUTE_PIPELINE)
-            g_prog_total.fetch_add((unsigned)n, std::memory_order_relaxed);
         for (Hash h : hashes) {
             size_t sz = 0;
             if (!db->read_entry(tag, h, &sz, nullptr, PAYLOAD_READ_NO_FLAGS)) { parse_fail++; continue; }
@@ -413,8 +412,22 @@ void start_replay(VkDevice dev, PFN_vkGetDeviceProcAddr gdpa, bool block) {
         // Behind the guest's own loading: the utility class, not the render path's.
         if (!block) pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
         double t0 = now_s();
+        // Count every selected database before publishing a percentage. Later
+        // recordings must not expand the denominator and move progress backwards.
+        unsigned total = 0;
+        for (const auto &path : files) {
+            DatabaseInterface *db = create_stream_archive_database(path.c_str(), DatabaseMode::ReadOnly);
+            if (db && db->prepare()) {
+                for (ResourceTag tag : {RESOURCE_GRAPHICS_PIPELINE, RESOURCE_COMPUTE_PIPELINE}) {
+                    size_t count = 0;
+                    if (db->get_hash_list_for_resource_tag(tag, &count, nullptr)) total += (unsigned)count;
+                }
+            }
+            delete db;
+        }
+        g_prog_total.store(total); g_prog_done.store(0); g_prog_errors.store(0);
         g_prog_t0.store(t0); g_prog_state.store(1);
-        write_progress(0,0,1);
+        write_progress(0,total,1);
         for (const auto &p : files) replay_db(dev, f, p, nthreads);
         klvk_finish_replay(dev);
         g_prog_state.store(2);
