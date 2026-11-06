@@ -101,7 +101,7 @@ def main():
                     if (dest/'preparation'/name).is_file():shutil.copy2(dest/'preparation'/name,stage/'preparation'/name)
         except (OSError,ValueError,KeyError,TypeError):
             pass
-        (stage/'moltenvr-install.json').write_text(json.dumps({'version':'0.3.1','depot':str(depot)}, indent=2))
+        (stage/'moltenvr-install.json').write_text(json.dumps({'version':'0.3.2','depot':str(depot)}, indent=2))
         stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         if dest.exists():
             dest.rename(dest.with_name('verantyx.bak.'+stamp))

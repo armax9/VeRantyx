@@ -2,7 +2,7 @@
 
 Play Valve's Linux ARM64 version of Half-Life: Alyx on an Apple Silicon Mac with MoltenVR and a Quest headset. The game runs on the Mac; MoltenVR streams it to the headset.
 
-This is a MoltenVR adaptation of [VeRantyx](https://github.com/Ag3497120/VeRantyx), built on Klepton and MoltenVK. Version 0.3.1 includes this fork's tested pipeline preparation, input and frame-timing updates on top of the native upstream runtime through `421b682`.
+This is a MoltenVR adaptation of [VeRantyx](https://github.com/Ag3497120/VeRantyx), built on Klepton and MoltenVK. Version 0.3.2 includes this fork's tested pipeline preparation, input and frame-timing updates on top of the native upstream runtime through `421b682`.
 
 ## Download and install
 
@@ -61,18 +61,15 @@ Tested by the maintainer on an M3 Max with Quest 3:
 
 Output resolution follows MoltenVR's recommendation at launch. Restart the game after changing it. Controller-driven finger animation is supported; optical finger tracking is not implemented.
 
-## New in 0.3.1
+## New in 0.3.2
 
-- Known graphics pipelines are prepared before play from a no-code recipe and your own installed shaders. No campaign walkthrough is needed to prepare this list.
-- The game starts, prepares shaders and loads its menu without waiting for the headset. Tracking joins the same session when you put it on.
-- Shader preparation progress appears inside VR with an orange Alyx-style interface and fonts from your installed game.
-- Loading rooms and chapter maps render at the resolution recommended by MoltenVR.
-- A session lock prevents duplicate native launches and conflicting cache writes.
-- Content identities protect the preparation database against changed shaders, runtime or driver. Rerun the installer after a game-file update to rebuild it.
-- Controller release events use fresh input and measured hand-pose history. Rendering retains its own frame poses; no throw-speed boost is added.
-- Missed display intervals advance the engine frame clock correctly. OpenVR exposes measured CPU/frame timing history without pretending it measures GPU busy or headset display latency.
-- Every automatic fidelity level retains 4x MSAA. Graphics presets and working menu compatibility remain intact.
-- Leftover filesystem/settings diagnostics are disabled during normal play.
+- Quest controller finger animation now uses capacitive touches on triggers, thumbsticks, A/B, X/Y and thumbrests, independently for each hand and separately from presses.
+- Resting hands no longer curl from small thumbstick drift, and grip pressure no longer substitutes for thumb contact.
+- Keep up to eight ragdolls on Low instead of the portable profile’s limit of two. Other graphics settings are unchanged; Steam launch options can override the limit.
+- Fix excessive fog illumination caused by skipping lighting and shadow-mask draws while their pipelines compiled. Depth, offscreen and single-sample service passes complete before first use; ordinary 4x-MSAA scene materials retain nonblocking compilation.
+- Fog remains enabled with its original settings. The fix does not lower the graphics preset or disable the effect.
+
+Includes the in-headset orange preparation display, native-resolution loading screens, headset-independent startup, persistent settings, gravity gloves, throw timing and 4x MSAA from the previous release.
 
 The first preparation may take a minute or longer. A new process still replays its pipeline list on later launches, usually faster when the system Metal compiler cache is warm. The list does not cover every combination in every scene. Performance depends on your Mac, resolution, graphics settings and streaming connection.
 

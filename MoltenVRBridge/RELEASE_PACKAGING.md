@@ -1,4 +1,4 @@
-# Runtime packaging 0.3.1
+# Runtime packaging 0.3.2
 
 Build with `build-release.sh`; Fossilize is pinned and linked into the native host. The complete Klepton patch plus NativeARM refinements reproduce the tested source. Strip debug symbols and ad-hoc sign the ARM64 executables before packaging.
 

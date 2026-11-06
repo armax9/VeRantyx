@@ -168,7 +168,7 @@ echo "MoltenVR resolution: ${runtime_width}x${runtime_height} per eye"
 if [[ ! -s "$VERANTYX_LOADING_CAPABILITY_FILE" ]]; then unset VERANTYX_NATIVE_STAGE_FILE; fi
 /usr/bin/python3 "$base/normalize_save_names.py" "$game/game/hlvr/save"
 cd "$game"
-"$base/alyx_host" --libdir "$base/guest-lib" --game "$game" -- -vr -steam -novid -net_no_parallel_build -noasserts -nopassiveasserts -vulkan -nowindow "$@" > >( /usr/bin/python3 "$test/filter_log.py" "$test/prewarm.log" ) 2>&1 &
+"$base/alyx_host" --libdir "$base/guest-lib" --game "$game" -- -vr -steam -novid -net_no_parallel_build -noasserts -nopassiveasserts -vulkan -nowindow +g_ragdoll_maxcount 8 "$@" > >( /usr/bin/python3 "$test/filter_log.py" "$test/prewarm.log" ) 2>&1 &
 game_pid=$!
 /usr/bin/python3 "$test/show_progress.py" "$ALYX_PREWARM_PROGRESS" "$game_pid" &
 progress_pid=$!

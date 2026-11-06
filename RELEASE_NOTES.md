@@ -1,15 +1,14 @@
-# Native Alyx for MoltenVR 0.3.1
+# Native Alyx for MoltenVR 0.3.2
 
-Launch Alyx from macOS Steam, let it prepare, then put on your headset and play.
+Better Quest controller finger animation and corrected fog lighting.
 
-- Start the game and shader preparation without waiting for the headset, in a single game session.
-- See shader-cache checking and preparation progress directly in VR, with an orange Alyx-style interface and the game’s own fonts.
-- Restore loading rooms and chapter maps using assets from your installed game, rendered at MoltenVR’s recommended resolution.
-- Join tracking after launch with a consistent starting height and position.
-- Prevent duplicate native launches and conflicting shader-cache writes.
-- Keep existing save handling, graphics settings, controller input, gravity gloves, throw timing and 4x MSAA.
+- Read capacitive touches on triggers, thumbsticks, A/B, X/Y and thumbrests separately from button presses, for both hands.
+- Fix false resting-hand curl caused by thumbstick drift and grip-based thumb-contact guesses.
+- Keep up to eight ragdolls on Low instead of the portable profile’s limit of two. Other graphics settings are unchanged; Steam launch options can override the limit.
+- Fix excessive fog illumination from omitted lighting and shadow-mask draws during asynchronous pipeline compilation.
+- Keep fog enabled, preserve the selected graphics preset and 4x MSAA, and retain nonblocking compilation for ordinary scene materials. Service passes complete before first use so incomplete lighting data cannot persist.
 
-Steam launch options remain supported, including `-novid +vr_fidelity_level_auto 0 +vr_fidelity_level 3`. Automatic fidelity is used when no override is specified.
+The orange in-headset preparation display, native-resolution loading screens, startup without waiting for the headset, save/settings handling, gravity gloves and throw timing are retained.
 
 ## Install or update
 
@@ -21,4 +20,6 @@ python3 install.py "/path/to/Half-Life Alyx" "/path/to/depot_546564" --notproton
 
 Use your own licensed Alyx content and Linux ARM64 depot. Native macOS Steam must be running. Select **Alyx Native - MoltenVR** in Steam compatibility settings, or run `start.command` from the game folder. The installer backs up an existing managed installation and preserves settings, saves and compatible caches.
 
-Shader preparation uses your installed game files. Later launches reuse compatible caches but still replay the pipeline list; previously unseen combinations can compile during play. No game assets or shader binaries are included.
+Steam launch options remain supported, for example `-novid +vr_fidelity_level_auto 0 +vr_fidelity_level 3`. Automatic fidelity is used when no override is specified.
+
+The fixes were tested on the maintainer’s Mac with Quest 3 and MoltenVR. The fog correction was reproduced and compared on the same train save, then confirmed in the headset. No game assets, shader binaries or personal caches are included.
